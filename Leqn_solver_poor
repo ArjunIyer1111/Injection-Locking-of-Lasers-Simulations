@@ -1,0 +1,48 @@
+tic;
+paramfile='laser_param';
+eval(paramfile);
+%% Declaring global variables which will be shared between this script and the function handle
+global R1 A_fr del_om omega1 psi1 del_N kappa A_0 m N sq_fun t1 f;
+%%calculating steady state values
+%free running laser amplitude
+A_fr= sqrt(( J-(gamma_n*N_th))/gamma_p);
+%required injection ratio
+R1=db2mag(-20);
+%Steady state phase difference, in an actual experiment one would control the detuning, but in simulations its easier to control this phase
+psi1=-0.6;
+%coupling into the laser cavity
+kappa=k*R1;
+%Phase modulation this corresponds to a square wave with amplitude pi/2
+m=1.5; 
+a= -(2*(kappa/gamma_p)*A_fr*cos(psi1));
+b=-A_fr^2;
+c=-(gamma_n*2*kappa*A_fr*cos(psi1)/(gamma_p*g));
+p2=[1 a b c ];
+r1=roots(p2);
+%Computing Steady state amplitude
+A_0= r1(r1>=0.999*A_fr);
+%Computing Detuning using steady state phase differnce and steady state amplitude
+del_om=(-kappa*sqrt(1+alpha^2)*A_fr*sin(psi1+atan(alpha)))/(A_0*2*pi);
+% Steady state carrier concentration, expressed as N-N_th
+del_N=-2*kappa*A_fr/A_0/g*cos(psi1);%matrix elements
+%expressing detuning in rad/sec
+del_om=del_om*2*pi;
+%number of cycles
+N=5;
+%setting options for ODE solver
+options =odeset('RelTol',1e-4,'AbsTol',[1e-3,1e-3]);
+%Frequency of input square wave, this is now set at 1GHz
+omega1=1*1e9*2*pi;
+%Defining span of integration
+T=N*pi*2/omega1;
+t1=0:T/1000:T;
+%designing the Bessel filter of order 2 and bandwidth at about 15 times the input frequency
+[b,a]=besself(2,15*omega1/2/pi);[bz,az]=impinvar(b,a,1/(t1(2)-t1(1)));
+%Generating the bessel filtered square wave
+sq_fun=filter(bz,az,m*square(omega1*t1));%(m*square(omega1*t1)) tsmovavg((m*square(omega1*t1)),'e',15)
+%Creating the anonymous function for interpolation or in other words creating a lookup table
+f=@(xq)interp1(t1,sq_fun,xq);
+%Calling the ODE solver
+[t,Z] = ode45(@leqn_solver_fun3,[0 T],[A_0*exp(1i*psi1) N_th+del_N],options);
+%plotting the results
+plot(t,detrend(angle(Z(:,1)),'constant')+0.1,t1(t1>=0),sq_fun(t1>=0),'linewidth',1.5);
