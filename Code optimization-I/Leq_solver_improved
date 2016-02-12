@@ -1,0 +1,30 @@
+paramfile='laser_param';
+eval(paramfile);
+%% Computing steady state parameters
+A_fr= sqrt(( J-(gamma_n*N_th))/gamma_p);
+R1=db2mag(-20);
+psi1=-0.4;
+kappa=k*R1;
+r1=roots([1 -(2*(kappa/gamma_p)*A_fr*cos(psi1)) -A_fr^2 -(gamma_n*2*kappa*A_fr*cos(psi1)/(gamma_p*g)) ]);
+A_0= r1(r1>=0.999*A_fr);
+del_om=(-kappa*sqrt(1+alpha^2)*A_fr*sin(psi1+atan(alpha)))/(A_0*2*pi);
+del_N=-2*kappa*A_fr/A_0/g*cos(psi1);%matrix elements
+del_om=del_om*2*pi;
+%% Setting ODE options
+options =odeset('RelTol',1e-3,'AbsTol',[1e-2,1e-2],'vectorized','on');
+%% Frequency of input function 
+omega1=1*1e9*2*pi;
+%% Defining Time span, corresponds to 5 Cycles of the input signal
+T=10000*pi*2/omega1;
+%% Creating a lookup table for the ODE solver
+t1=linspace(-0.1*T,T,10000*40);
+%bessel filtering
+[b,a]=besself(2,15*omega1/2/pi);
+[bz,az]=impinvar(b,a,1/(t1(2)-t1(1)));
+%the required square function
+sq_fun=filter(bz,az,1.5*square(omega1*t1));%(m*square(omega1*t1)) tsmovavg((m*square(omega1*t1)),'e',15)
+%interpolating to create a lookup table
+f=@(xq)interp1qr(t1',sq_fun',xq);
+%calling the ODE solver with steady state as initial conditions
+[t,Z] = ode45(@leqn_solver_fun4,[0 T],[A_0*exp(1i*psi1) N_th+del_N],options,g,N_th,k,A_fr,f,del_om,J,gamma_n,gamma_p,R1);%
+%plot(t,detrend(angle(Z(:,1)),'constant')+0.03,t1(t1>=0),sq_fun(t1>=0),'linewidth',1.5);
